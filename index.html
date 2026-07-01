@@ -1,0 +1,1110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Vibu Quick Budget - Paper Ledger PWA</title>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Google Fonts for Friendly Hand-Drawn-like Sans & Clean typography -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Caveat:wght=700&family=DynaPuff:wght=500&family=Plus+Jakarta+Sans:wght=400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- FontAwesome for beautiful symbols -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Plus Jakarta Sans', 'sans-serif'],
+            sketch: ['Caveat', 'cursive'],
+            playful: ['DynaPuff', 'sans-serif'],
+          },
+        },
+      },
+    }
+  </script>
+
+  <style>
+    /* Mimic organic hand-drawn borders */
+    .sketch-border {
+      border-radius: 255px 15px 225px 15px/15px 225px 15px 255px;
+    }
+    .sketch-border-sm {
+      border-radius: 120px 10px 90px 10px/10px 95px 10px 110px;
+    }
+    
+    /* Disable long press context menu to allow custom press-and-hold gestures */
+    .no-select {
+      -webkit-touch-callout: none; /* iOS Safari */
+      -webkit-user-select: none;   /* Safari */
+      -khtml-user-select: none;     /* Konqueror HTML */
+      -moz-user-select: none;      /* Firefox */
+      -ms-user-select: none;       /* Internet Explorer/Edge */
+      user-select: none;           /* Non-prefixed version */
+    }
+
+    /* Wave effect on successful submission */
+    @keyframes success-burst {
+      0% { transform: scale(1); opacity: 1; }
+      100% { transform: scale(1.4); opacity: 0; }
+    }
+    .burst-active {
+      animation: success-burst 0.6s ease-out forwards;
+    }
+
+    /* Custom scrollbar styling for the categories dropdown and ledger */
+    ::-webkit-scrollbar {
+      width: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #d6d3d1;
+      border-radius: 10px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #a8a29e;
+    }
+  </style>
+</head>
+<body class="bg-stone-100 font-sans min-h-screen text-stone-800 antialiased flex flex-col justify-between selection:bg-rose-200">
+
+  <!-- Main Container resembling the mobile phone framing from the drawings -->
+  <div class="max-w-md w-full mx-auto min-h-screen flex flex-col bg-stone-50 shadow-2xl relative border-x-4 border-stone-800 overflow-hidden">
+    
+    <!-- Top Custom App Header & Notification Toast Center -->
+    <header class="px-4 pt-4 pb-2 flex justify-between items-center bg-stone-50 border-b-2 border-stone-200">
+      <div class="flex items-center gap-2 max-w-[70%]">
+        <div class="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center text-white font-sketch text-2xl shadow-sm animate-bounce flex-shrink-0">
+          $
+        </div>
+        <div class="min-w-0">
+          <h1 class="text-base sm:text-lg font-extrabold tracking-tight text-stone-900 font-playful truncate">Vibu Quick Budget</h1>
+          <p class="text-[10px] text-stone-500 -mt-0.5">PWA Ledger App</p>
+        </div>
+      </div>
+      
+      <!-- Actions: Config Google Sheets & Info -->
+      <div class="flex items-center gap-1.5">
+        <button onclick="toggleConfigModal(true)" class="p-2 text-stone-500 hover:text-stone-800 transition-colors relative" title="Google Sheets Setup">
+          <i class="fa-solid fa-cloud"></i>
+          <span id="sheetStatusIndicator" class="absolute top-1 right-1 w-2.5 h-2.5 rounded-full bg-red-500 border border-stone-50"></span>
+        </button>
+        <button onclick="toggleHelpModal(true)" class="p-2 text-stone-500 hover:text-stone-800 transition-colors" title="How to Use">
+          <i class="fa-regular fa-circle-question"></i>
+        </button>
+      </div>
+    </header>
+
+    <!-- Interactive Toast Message Container -->
+    <div id="toast" class="fixed top-16 left-1/2 transform -translate-x-1/2 z-50 bg-stone-900 text-stone-100 text-sm py-2 px-4 rounded-full shadow-lg flex items-center gap-2 opacity-0 pointer-events-none transition-all duration-300">
+      <span id="toastIcon"></span>
+      <span id="toastText">Logged successfully!</span>
+    </div>
+
+    <!-- MAIN APP CONTENT (Scrollable area) -->
+    <main class="flex-1 overflow-y-auto px-6 py-4 pb-32 space-y-6">
+      
+      <!-- Period Display Header -->
+      <div class="flex justify-between items-center bg-stone-100 p-2.5 rounded-xl border-2 border-stone-300/60 shadow-sm">
+        <span class="text-xs font-semibold uppercase tracking-wider text-stone-500">Active Period:</span>
+        <span id="activePeriodLabel" class="text-sm font-bold bg-stone-200 px-3 py-1 rounded-lg text-stone-800 border border-stone-300">JUL '26</span>
+      </div>
+
+      <!-- ROW 1 & 2: Income and Spend Cards (Matching 1 and 2 from diagram, transparent styles) -->
+      <div class="grid grid-cols-2 gap-4">
+        <!-- 1. Income Card (Transparent green) -->
+        <div class="bg-emerald-500/10 hover:bg-emerald-500/15 transition-colors border-2 border-dashed border-emerald-400 p-4 rounded-2xl flex flex-col justify-between min-h-[110px] relative overflow-hidden group">
+          <div class="absolute -right-2 -bottom-2 text-emerald-500/10 text-5xl font-sketch rotate-12 transition-transform group-hover:rotate-6">
+            <i class="fa-solid fa-money-bill-trend-up"></i>
+          </div>
+          <span class="text-xs font-bold uppercase tracking-wider text-emerald-800/80 flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-emerald-500"></span> Income
+          </span>
+          <div class="mt-2">
+            <span id="incomeTotal" class="text-2xl font-black text-emerald-700 font-sans tracking-tight">$0.00</span>
+            <p class="text-[10px] text-emerald-600/80 mt-0.5">Total Inflows</p>
+          </div>
+        </div>
+
+        <!-- 2. Spend Card (Transparent red) -->
+        <div class="bg-rose-500/10 hover:bg-rose-500/15 transition-colors border-2 border-dashed border-rose-400 p-4 rounded-2xl flex flex-col justify-between min-h-[110px] relative overflow-hidden group">
+          <div class="absolute -right-2 -bottom-2 text-rose-500/10 text-5xl font-sketch -rotate-12 transition-transform group-hover:-rotate-6">
+            <i class="fa-solid fa-receipt"></i>
+          </div>
+          <span class="text-xs font-bold uppercase tracking-wider text-rose-800/80 flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-rose-500"></span> Spend
+          </span>
+          <div class="mt-2">
+            <span id="spendTotal" class="text-2xl font-black text-rose-700 font-sans tracking-tight">$0.00</span>
+            <p class="text-[10px] text-rose-600/80 mt-0.5">Total Outflows</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3 & 4. Input Area (Central circle logic from diagram) -->
+      <div class="flex flex-col items-center py-2">
+        <div class="relative">
+          
+          <!-- Outer burst animation element -->
+          <div id="burstRing" class="absolute inset-0 rounded-full border-4 border-stone-800 pointer-events-none opacity-0"></div>
+
+          <!-- Main Input Circle (Central interactive controller) -->
+          <div id="holdCircle" class="w-72 h-72 rounded-full border-4 border-stone-800 bg-stone-50 flex flex-col items-center justify-center p-6 shadow-xl relative transition-all duration-300 hover:scale-[1.01] active:scale-[0.99] select-none no-select cursor-pointer">
+            
+            <!-- SVG Progress Ring (Fills as they hold) -->
+            <svg class="absolute top-0 left-0 w-full h-full -rotate-90 pointer-events-none" viewBox="0 0 100 100">
+              <circle cx="50" cy="50" r="46.5" fill="none" stroke="#e7e5e4" stroke-width="3"/>
+              <circle id="holdProgressRing" cx="50" cy="50" r="46.5" fill="none" stroke="#e11d48" stroke-width="3" 
+                      stroke-dasharray="292.16" stroke-dashoffset="292.16" class="transition-all duration-75"/>
+            </svg>
+
+            <!-- Plus / Minus Indicator Toggle -->
+            <div class="absolute top-6 flex items-center justify-center">
+              <button id="typeToggleBtn" onclick="toggleType(event)" class="bg-rose-500 text-white rounded-full px-4 py-1.5 font-bold shadow-md hover:shadow-lg hover:brightness-105 active:scale-95 transition-all text-xs flex items-center gap-1.5 border border-stone-800">
+                <span id="toggleSign" class="text-sm font-black">- Spend</span>
+                <i class="fa-solid fa-arrows-rotate text-[10px] opacity-80"></i>
+              </button>
+            </div>
+
+            <!-- Amount Input Field -->
+            <div class="flex flex-col items-center mt-6 w-full">
+              <label class="text-[10px] font-bold text-stone-400 uppercase tracking-widest">Enter Amount</label>
+              <div class="relative flex items-center justify-center w-full mt-1">
+                <span id="amountCurrency" class="text-3xl font-black text-rose-500 mr-1">$</span>
+                <input type="number" pattern="[0-9]*" inputmode="decimal" id="amountInput" placeholder="0.00" step="0.01" min="0.01" class="w-36 text-center text-4xl font-extrabold bg-transparent border-b-2 border-stone-300 focus:border-stone-800 focus:outline-none text-stone-800 font-sans tracking-tight" onclick="event.stopPropagation()">
+              </div>
+            </div>
+
+            <!-- Category Picker (Interactive dropdown list) -->
+            <div class="w-full mt-4 z-20 relative flex flex-col items-center" onclick="event.stopPropagation()">
+              <label class="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-1">Select Category</label>
+              <div class="relative w-48">
+                <button id="categorySelectBtn" onclick="toggleCategoryDropdown()" class="w-full bg-white border-2 border-stone-300 px-3 py-1.5 rounded-xl text-xs font-semibold text-stone-700 flex justify-between items-center hover:border-stone-500 active:scale-95 transition-all">
+                  <span id="selectedCategoryLabel" class="truncate">Select...</span>
+                  <i class="fa-solid fa-chevron-down text-[10px] text-stone-500"></i>
+                </button>
+                
+                <!-- Category Dropdown List -->
+                <ul id="categoryDropdownList" class="hidden absolute top-full left-0 right-0 mt-1 max-h-48 overflow-y-auto bg-white border-2 border-stone-800 rounded-xl shadow-xl z-50 py-1 divide-y divide-stone-100 text-xs">
+                  <!-- JS injected content -->
+                </ul>
+              </div>
+            </div>
+
+            <!-- Gesture Instructions / Progress Status -->
+            <div class="absolute bottom-6 flex flex-col items-center text-center">
+              <span id="gestureGuide" class="text-[10px] font-bold text-stone-500 tracking-wider">PRESS & HOLD TO LOG</span>
+              <div class="flex gap-1 mt-0.5">
+                <div id="dot1" class="w-1.5 h-1.5 rounded-full bg-stone-300 transition-colors"></div>
+                <div id="dot2" class="w-1.5 h-1.5 rounded-full bg-stone-300 transition-colors"></div>
+                <div id="dot3" class="w-1.5 h-1.5 rounded-full bg-stone-300 transition-colors"></div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- History & Quick View Ledger Section -->
+      <div class="mt-2 space-y-3">
+        <div class="flex justify-between items-center px-1">
+          <h3 class="font-extrabold text-stone-800 tracking-tight flex items-center gap-2">
+            <i class="fa-solid fa-clock-rotate-left text-sm text-stone-400"></i>
+            Transactions (This Period)
+          </h3>
+          <button onclick="exportCSV()" class="text-xs text-stone-500 hover:text-stone-800 flex items-center gap-1 font-semibold transition-colors">
+            <i class="fa-solid fa-file-export"></i> Export CSV
+          </button>
+        </div>
+
+        <div id="emptyLedgerState" class="hidden text-center py-8 bg-stone-100 rounded-2xl border-2 border-dashed border-stone-300 text-stone-400 text-xs">
+          <i class="fa-solid fa-receipt text-2xl mb-1.5 block text-stone-300"></i>
+          No transactions entered for this period.
+        </div>
+
+        <div id="ledgerList" class="space-y-2 max-h-64 overflow-y-auto pr-1">
+          <!-- Dynamic ledger row list goes here -->
+        </div>
+      </div>
+
+    </main>
+
+    <!-- 5. Bottom Navigation & Sheets Section (Mimics Sheets bar in sketch app) -->
+    <nav class="absolute bottom-0 left-0 right-0 bg-stone-950 border-t-4 border-stone-800 text-stone-200 py-3 px-4 z-40">
+      <div class="flex items-center justify-between overflow-x-auto gap-2 max-w-full pb-1" id="periodTabsContainer">
+        <!-- Javascript dynamic tab list -->
+      </div>
+    </nav>
+
+  </div> <!-- End of Mock Phone -->
+
+
+  <!-- ================= DIALOG MODALS ================= -->
+
+  <!-- Modal 1: Google Sheets Config Setup Guide -->
+  <div id="configModal" class="fixed inset-0 bg-stone-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-3xl border-4 border-stone-800 shadow-2xl max-w-md w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+      <div class="flex justify-between items-start">
+        <div class="flex items-center gap-2">
+          <div class="p-2 bg-emerald-100 rounded-lg text-emerald-600">
+            <i class="fa-solid fa-table-list text-lg"></i>
+          </div>
+          <h2 class="text-lg font-black text-stone-900">Google Sheets Sync</h2>
+        </div>
+        <button onclick="toggleConfigModal(false)" class="p-1 hover:bg-stone-100 rounded-full transition-colors text-stone-400 hover:text-stone-700">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <p class="text-xs text-stone-500">
+        Instantly append your transactions directly to a Google Sheet from your mobile phone! 
+      </p>
+
+      <!-- Apps Script Config Field -->
+      <div class="space-y-1">
+        <label class="block text-xs font-bold text-stone-600 uppercase">Your Apps Script Web App URL</label>
+        <div class="flex gap-2">
+          <input type="url" id="googleSheetsUrlInput" placeholder="https://script.google.com/macros/s/.../exec" class="flex-1 bg-stone-100 border border-stone-300 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-stone-800 text-stone-800 font-sans">
+          <button onclick="testSyncLink()" class="px-3 py-2 bg-stone-800 text-white rounded-xl text-xs font-bold hover:bg-stone-700 active:scale-95 transition-all">Test</button>
+        </div>
+        <p class="text-[10px] text-stone-400 mt-1">Status: <span id="syncStatusBadge" class="font-bold text-red-500">Not Synced</span></p>
+      </div>
+
+      <div class="border-t border-stone-200 my-4 pt-4 space-y-3">
+        <h3 class="text-xs font-black text-stone-800 uppercase tracking-wider">Quick Setup (2 Minutes):</h3>
+        
+        <ol class="text-xs text-stone-600 list-decimal list-inside space-y-2">
+          <li>Create a new <strong>Google Sheet</strong>.</li>
+          <li>In your Google Sheet, go to <strong>Extensions &gt; Apps Script</strong>.</li>
+          <li>Paste the following code, then click <strong>Deploy &gt; New deployment</strong>.</li>
+          <li>Select type <strong>"Web App"</strong>, set Access to <strong>"Anyone"</strong>, then authorize & deploy.</li>
+          <li>Copy your deployment's Web App URL and paste it in the box above!</li>
+        </ol>
+
+        <!-- Code Block copy block -->
+        <div class="relative bg-stone-900 text-stone-300 p-3 rounded-xl text-[10px] font-mono leading-relaxed mt-2 overflow-x-auto max-h-44">
+          <pre id="scriptCodeBlock">
+function doPost(e) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  var params = JSON.parse(e.postData.contents);
+  
+  // Appends row: Date, Period, Type, Amount, Category
+  sheet.appendRow([
+    params.date,
+    params.period,
+    params.type,
+    params.amount,
+    params.category
+  ]);
+  
+  return ContentService.createTextOutput(JSON.stringify({ "result": "success" }))
+    .setMimeType(ContentService.MimeType.JSON);
+}</pre>
+          <button onclick="copyAppsScriptCode()" class="absolute top-2 right-2 bg-stone-800 text-stone-300 hover:text-white px-2 py-1 rounded text-[10px] font-sans font-bold flex items-center gap-1 border border-stone-700">
+            <i class="fa-solid fa-copy"></i> Copy Code
+          </button>
+        </div>
+      </div>
+
+      <div class="flex gap-2 justify-end pt-2 border-t border-stone-100">
+        <button onclick="saveSheetsConfig()" class="w-full py-2.5 bg-emerald-500 text-white font-bold rounded-xl text-xs hover:bg-emerald-600 transition-all shadow-md">
+          Save Configuration
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 2: How To Use / Help Modal -->
+  <div id="helpModal" class="fixed inset-0 bg-stone-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-3xl border-4 border-stone-800 shadow-2xl max-w-sm w-full p-6 space-y-4">
+      <div class="flex justify-between items-center">
+        <h2 class="text-lg font-black text-stone-900 flex items-center gap-2">
+          <i class="fa-regular fa-circle-question text-rose-500"></i>
+          How to Use
+        </h2>
+        <button onclick="toggleHelpModal(false)" class="p-1 hover:bg-stone-100 rounded-full transition-colors text-stone-400">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <div class="space-y-3 text-xs text-stone-600 leading-relaxed">
+        <p>This is a super fast offline-ready utility designed for lightning quick manual input logging on your mobile device!</p>
+        
+        <div class="space-y-2">
+          <div class="flex items-start gap-2.5">
+            <span class="w-5 h-5 rounded-full bg-stone-800 text-white text-[10px] flex items-center justify-center font-bold flex-shrink-0 mt-0.5">1</span>
+            <p><strong>Set your transaction details:</strong> Type in your numerical amount first, select the category from the ledger dropdown, and toggle between <span class="text-rose-600 font-bold">Spend (-)</span> or <span class="text-emerald-600 font-bold">Income (+)</span>.</p>
+          </div>
+          <div class="flex items-start gap-2.5">
+            <span class="w-5 h-5 rounded-full bg-stone-800 text-white text-[10px] flex items-center justify-center font-bold flex-shrink-0 mt-0.5">2</span>
+            <p><strong>Hold the central wheel:</strong> Press and hold down with your finger anywhere inside the central circle for a continuous 2 seconds to log it.</p>
+          </div>
+          <div class="flex items-start gap-2.5">
+            <span class="w-5 h-5 rounded-full bg-stone-800 text-white text-[10px] flex items-center justify-center font-bold flex-shrink-0 mt-0.5">3</span>
+            <p><strong>Add new sheets:</strong> Use the plus symbol in the bottom sheets bar to quickly make a new monthly ledger. All data stores automatically in your browser storage or syncs with your configured Google Sheets spreadsheet.</p>
+          </div>
+        </div>
+      </div>
+
+      <button onclick="toggleHelpModal(false)" class="w-full py-2.5 bg-stone-800 text-white font-bold rounded-xl text-xs hover:bg-stone-700 transition-all">
+        Awesome, Let's Go!
+      </button>
+    </div>
+  </div>
+
+
+  <!-- Audio & Functional Javascript Logic -->
+  <script>
+    // App Constants
+    const CATEGORIES = [
+      'Paycheck', 'Bonus', 'Payback', 'Rent', 'Utilities', 'Wifi', 'Subscriptions',
+      'Daily Necessities', 'Gas', 'Groceries', 'Car', 'Insurance', 'Going Out',
+      'Clothes', 'Extras', 'Roth IRA', 'High Yield Savings', 'Brokerage'
+    ];
+
+    // LocalStorage keys (kept as 'vibebudget' to prevent losing any local mock data user entered)
+    const STORAGE_TRANSACTIONS_KEY = 'vibebudget_transactions_db';
+    const STORAGE_PERIODS_KEY = 'vibebudget_periods_db';
+    const STORAGE_CONFIG_KEY = 'vibebudget_sheets_config';
+
+    // State Variables
+    let transactions = [];
+    let periods = [];
+    let activePeriod = '';
+    let isIncomeType = false; // Starts as Spend (-)
+    let holdTimer = null;
+    let holdProgress = 0;
+    const holdRequiredTime = 2000; // ms (2 seconds)
+    let holdStartTime = null;
+    let isHolding = false;
+    let animFrame = null;
+
+    // Google Sheets Config
+    let sheetsConfig = {
+      webAppUrl: '',
+      isConfigured: false
+    };
+
+    // Web Audio Synthesizer Context (for offline haptics and confirmation triggers)
+    let audioCtx = null;
+
+    // On Load Initializer
+    window.onload = function() {
+      // 1. Init Audio on first user interaction
+      initAudioContext();
+      
+      // 2. Load configurations and DB state
+      loadDatabase();
+      loadSheetsConfig();
+      
+      // 3. Populate default periods if none exist (Dynamically calculated based on current year 2026)
+      if (periods.length === 0) {
+        periods = generateDefaultPeriods();
+        savePeriods();
+      }
+      if (!activePeriod) {
+        activePeriod = periods[periods.length - 1]; // Select current month by default
+      }
+
+      // 4. Populate dynamic elements
+      populateCategoryDropdown();
+      renderPeriodTabs();
+      updateDashboardData();
+      renderLedgerList();
+
+      // 5. Setup Interactive Hold Circle Listeners
+      setupHoldCircleListeners();
+      
+      // 6. Close modals when clicking backdrop
+      window.onclick = function(e) {
+        if (e.target === document.getElementById('configModal')) toggleConfigModal(false);
+        if (e.target === document.getElementById('helpModal')) toggleHelpModal(false);
+      }
+    }
+
+    // Audio confirmation system
+    function initAudioContext() {
+      const clickTrigger = () => {
+        if (!audioCtx) {
+          audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+      };
+      document.body.addEventListener('click', clickTrigger, { once: true });
+      document.body.addEventListener('touchstart', clickTrigger, { once: true });
+    }
+
+    // Synthesized Sound FX
+    function playBeep(frequency, duration, type = 'sine') {
+      if (!audioCtx) return;
+      try {
+        let osc = audioCtx.createOscillator();
+        let gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        
+        osc.type = type;
+        osc.frequency.setValueAtTime(frequency, audioCtx.currentTime);
+        
+        gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+        
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+      } catch(e) {
+        console.warn('Audio play failure: ', e);
+      }
+    }
+
+    function playSuccessSound() {
+      if (!audioCtx) return;
+      try {
+        let now = audioCtx.currentTime;
+        let osc1 = audioCtx.createOscillator();
+        let osc2 = audioCtx.createOscillator();
+        let gain = audioCtx.createGain();
+        
+        osc1.connect(gain);
+        osc2.connect(gain);
+        gain.connect(audioCtx.destination);
+        
+        osc1.type = 'triangle';
+        osc2.type = 'triangle';
+        
+        osc1.frequency.setValueAtTime(523.25, now); // C5
+        osc2.frequency.setValueAtTime(659.25, now); // E5
+        
+        gain.gain.setValueAtTime(0.12, now);
+        gain.gain.exponentialRampToValueAtTime(0.005, now + 0.5);
+        
+        osc1.start(now);
+        osc1.stop(now + 0.5);
+        osc2.start(now);
+        osc2.stop(now + 0.5);
+      } catch(e) {
+        console.warn('Success sound failure: ', e);
+      }
+    }
+
+    function playHoldTic() {
+      playBeep(440, 0.05, 'triangle');
+    }
+
+    // Database / Storage Methods
+    function loadDatabase() {
+      const transStr = localStorage.getItem(STORAGE_TRANSACTIONS_KEY);
+      const periodsStr = localStorage.getItem(STORAGE_PERIODS_KEY);
+      
+      if (transStr) transactions = JSON.parse(transStr);
+      if (periodsStr) periods = JSON.parse(periodsStr);
+    }
+
+    function saveTransactions() {
+      localStorage.setItem(STORAGE_TRANSACTIONS_KEY, JSON.stringify(transactions));
+    }
+
+    function savePeriods() {
+      localStorage.setItem(STORAGE_PERIODS_KEY, JSON.stringify(periods));
+    }
+
+    function loadSheetsConfig() {
+      const configStr = localStorage.getItem(STORAGE_CONFIG_KEY);
+      if (configStr) {
+        sheetsConfig = JSON.parse(configStr);
+        document.getElementById('googleSheetsUrlInput').value = sheetsConfig.webAppUrl || '';
+      }
+      updateSheetsIndicator();
+    }
+
+    function updateSheetsIndicator() {
+      const badge = document.getElementById('syncStatusBadge');
+      const indicator = document.getElementById('sheetStatusIndicator');
+      if (sheetsConfig.isConfigured && sheetsConfig.webAppUrl) {
+        badge.innerText = 'Sync Active';
+        badge.className = 'font-bold text-emerald-500';
+        indicator.className = 'absolute top-1 right-1 w-2.5 h-2.5 rounded-full bg-emerald-500 border border-stone-50 animate-pulse';
+      } else {
+        badge.innerText = 'Not Synced';
+        badge.className = 'font-bold text-red-500';
+        indicator.className = 'absolute top-1 right-1 w-2.5 h-2.5 rounded-full bg-red-500 border border-stone-50';
+      }
+    }
+
+    // Dynamic Elements Rendering
+    function populateCategoryDropdown() {
+      const list = document.getElementById('categoryDropdownList');
+      list.innerHTML = '';
+      CATEGORIES.forEach(cat => {
+        const li = document.createElement('li');
+        li.innerHTML = `
+          <button type="button" class="w-full text-left px-3 py-2 hover:bg-stone-100 transition-colors truncate">
+            ${cat}
+          </button>
+        `;
+        li.querySelector('button').addEventListener('click', () => {
+          selectCategory(cat);
+          toggleCategoryDropdown(false);
+        });
+        list.appendChild(li);
+      });
+    }
+
+    let isDropdownOpen = false;
+    function toggleCategoryDropdown(force) {
+      const dropdown = document.getElementById('categoryDropdownList');
+      isDropdownOpen = (force !== undefined) ? force : !isDropdownOpen;
+      if (isDropdownOpen) {
+        dropdown.classList.remove('hidden');
+      } else {
+        dropdown.classList.add('hidden');
+      }
+    }
+
+    let currentSelectedCategory = '';
+    function selectCategory(category) {
+      currentSelectedCategory = category;
+      document.getElementById('selectedCategoryLabel').innerText = category;
+      document.getElementById('selectedCategoryLabel').classList.remove('text-stone-700');
+      document.getElementById('selectedCategoryLabel').classList.add('text-stone-900', 'font-black');
+    }
+
+    function toggleType(event) {
+      if (event) event.stopPropagation(); // Avoid triggering hold gesture
+      isIncomeType = !isIncomeType;
+      
+      const btn = document.getElementById('typeToggleBtn');
+      const sign = document.getElementById('toggleSign');
+      const currency = document.getElementById('amountCurrency');
+      const progressRing = document.getElementById('holdProgressRing');
+
+      if (isIncomeType) {
+        btn.className = "bg-emerald-500 text-white rounded-full px-4 py-1.5 font-bold shadow-md hover:shadow-lg hover:brightness-105 active:scale-95 transition-all text-xs flex items-center gap-1.5 border border-stone-800";
+        sign.innerText = "+ Income";
+        currency.innerText = "+$";
+        currency.className = "text-3xl font-black text-emerald-500 mr-1";
+        progressRing.setAttribute('stroke', '#10b981'); 
+      } else {
+        btn.className = "bg-rose-500 text-white rounded-full px-4 py-1.5 font-bold shadow-md hover:shadow-lg hover:brightness-105 active:scale-95 transition-all text-xs flex items-center gap-1.5 border border-stone-800";
+        sign.innerText = "- Spend";
+        currency.innerText = "$";
+        currency.className = "text-3xl font-black text-rose-500 mr-1";
+        progressRing.setAttribute('stroke', '#f43f5e'); 
+      }
+      playBeep(220, 0.08);
+    }
+
+    // Dynamic chronological generator for default consecutive periods
+    function generateDefaultPeriods() {
+      const months = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+      const d = new Date(); // Automatically uses current 2026 clock
+      let results = [];
+      
+      // Generate 3 consecutive months: [current-2, current-1, current]
+      for (let i = 2; i >= 0; i--) {
+        let tempDate = new Date(d.getFullYear(), d.getMonth() - i, 1);
+        let label = `${months[tempDate.getMonth()]} '${String(tempDate.getFullYear()).slice(-2)}`;
+        results.push(label);
+      }
+      return results;
+    }
+
+    function getFormattedPeriod() {
+      const months = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+      const d = new Date();
+      return `${months[d.getMonth()]} '${String(d.getFullYear()).slice(-2)}`;
+    }
+
+    function renderPeriodTabs() {
+      const container = document.getElementById('periodTabsContainer');
+      container.innerHTML = '';
+
+      // Render actual periods
+      periods.forEach(p => {
+        const isActive = (p === activePeriod);
+        const btn = document.createElement('button');
+        btn.className = `px-3.5 py-1.5 text-xs font-black uppercase tracking-wider sketch-border-sm border-2 whitespace-nowrap transition-all ${
+          isActive 
+          ? 'bg-stone-50 border-white text-stone-900 shadow-md scale-105' 
+          : 'bg-stone-900/50 border-stone-700 hover:border-stone-500 text-stone-300 hover:text-stone-100'
+        }`;
+        btn.innerText = p;
+        btn.addEventListener('click', () => changePeriod(p));
+        container.appendChild(btn);
+      });
+
+      // Render Summary view tab
+      const isSummary = (activePeriod === 'SUMMARY');
+      const summaryBtn = document.createElement('button');
+      summaryBtn.className = `px-3.5 py-1.5 text-xs font-black uppercase tracking-wider sketch-border-sm border-2 whitespace-nowrap transition-all ${
+        isSummary
+        ? 'bg-stone-50 border-white text-stone-900 shadow-md scale-105'
+        : 'bg-stone-900/50 border-stone-700 hover:border-stone-500 text-stone-300 hover:text-stone-100'
+      }`;
+      summaryBtn.innerText = "Summary 📊";
+      summaryBtn.addEventListener('click', () => changePeriod('SUMMARY'));
+      container.appendChild(summaryBtn);
+
+      // Render Add Sheet Tab
+      const addBtn = document.createElement('button');
+      addBtn.className = 'px-3 py-1.5 text-xs bg-stone-800 hover:bg-stone-700 rounded-lg text-emerald-400 font-bold border-2 border-stone-700 flex items-center gap-1 transition-all whitespace-nowrap';
+      addBtn.innerHTML = '<i class="fa-solid fa-plus text-[10px]"></i> New Period';
+      addBtn.addEventListener('click', addNewPeriodPrompt);
+      container.appendChild(addBtn);
+    }
+
+    function changePeriod(p) {
+      activePeriod = p;
+      document.getElementById('activePeriodLabel').innerText = p;
+      renderPeriodTabs();
+      updateDashboardData();
+      renderLedgerList();
+      playBeep(330, 0.08);
+    }
+
+    function addNewPeriodPrompt() {
+      const userMonth = prompt("Enter Period Month (e.g. DEC, JAN, FEB):", "").trim().toUpperCase();
+      if (!userMonth) return;
+      const userYear = prompt("Enter Period Year (e.g. 26, 27):", "").trim();
+      if (!userYear) return;
+
+      const newPeriod = `${userMonth} '${userYear}`;
+      if (!periods.includes(newPeriod)) {
+        periods.push(newPeriod); // Append at the end chronologically
+        savePeriods();
+        changePeriod(newPeriod);
+        showToast("New sheet period created!", "success");
+      } else {
+        changePeriod(newPeriod);
+      }
+    }
+
+    // Calculate dynamic state
+    function updateDashboardData() {
+      let incomeSum = 0;
+      let spendSum = 0;
+
+      if (activePeriod === 'SUMMARY') {
+        transactions.forEach(t => {
+          const amt = parseFloat(t.amount);
+          if (t.type === 'Income') incomeSum += amt;
+          else spendSum += amt;
+        });
+      } else {
+        transactions.filter(t => t.period === activePeriod).forEach(t => {
+          const amt = parseFloat(t.amount);
+          if (t.type === 'Income') incomeSum += amt;
+          else spendSum += amt;
+        });
+      }
+
+      document.getElementById('incomeTotal').innerText = `$${incomeSum.toFixed(2)}`;
+      document.getElementById('spendTotal').innerText = `$${spendSum.toFixed(2)}`;
+    }
+
+    function renderLedgerList() {
+      const container = document.getElementById('ledgerList');
+      const emptyState = document.getElementById('emptyLedgerState');
+      container.innerHTML = '';
+
+      let filtered = [];
+      if (activePeriod === 'SUMMARY') {
+        filtered = [...transactions].reverse(); 
+      } else {
+        filtered = transactions.filter(t => t.period === activePeriod).reverse();
+      }
+
+      if (filtered.length === 0) {
+        emptyState.classList.remove('hidden');
+      } else {
+        emptyState.classList.add('hidden');
+        filtered.forEach(t => {
+          const item = document.createElement('div');
+          const isInc = (t.type === 'Income');
+          item.className = "flex items-center justify-between p-3 bg-white border border-stone-200 hover:border-stone-300 rounded-xl shadow-sm transition-all";
+          
+          item.innerHTML = `
+            <div class="flex items-center gap-3">
+              <div class="w-8 h-8 rounded-full ${isInc ? 'bg-emerald-500/10 text-emerald-600' : 'bg-rose-500/10 text-rose-600'} flex items-center justify-center text-xs font-black">
+                <i class="${isInc ? 'fa-solid fa-arrow-trend-up' : 'fa-solid fa-arrow-trend-down'}"></i>
+              </div>
+              <div>
+                <p class="text-xs font-black text-stone-800">${t.category || 'Uncategorized'}</p>
+                <p class="text-[10px] text-stone-400 font-medium">${t.date} ${activePeriod === 'SUMMARY' ? `• ${t.period}` : ''}</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-3">
+              <span class="text-sm font-extrabold font-sans tracking-tight ${isInc ? 'text-emerald-600' : 'text-stone-700'}">
+                ${isInc ? '+' : '-'}$${parseFloat(t.amount).toFixed(2)}
+              </span>
+              <button onclick="deleteTransaction('${t.id}')" class="text-stone-300 hover:text-red-500 p-1.5 transition-colors" title="Delete entry">
+                <i class="fa-regular fa-trash-can text-xs"></i>
+              </button>
+            </div>
+          `;
+          container.appendChild(item);
+        });
+      }
+    }
+
+    function deleteTransaction(id) {
+      transactions = transactions.filter(t => t.id !== id);
+      saveTransactions();
+      updateDashboardData();
+      renderLedgerList();
+      showToast("Transaction removed.", "info");
+      playBeep(180, 0.1);
+    }
+
+    // PWA Toast Helper
+    function showToast(message, type = "success") {
+      const toast = document.getElementById('toast');
+      const toastText = document.getElementById('toastText');
+      const toastIcon = document.getElementById('toastIcon');
+
+      toastText.innerText = message;
+      if (type === "success") {
+        toastIcon.innerHTML = `<i class="fa-solid fa-circle-check text-emerald-400 text-sm"></i>`;
+      } else if (type === "error") {
+        toastIcon.innerHTML = `<i class="fa-solid fa-circle-exclamation text-rose-400 text-sm"></i>`;
+      } else {
+        toastIcon.innerHTML = `<i class="fa-solid fa-circle-info text-blue-400 text-sm"></i>`;
+      }
+
+      toast.style.opacity = '1';
+      toast.style.transform = 'translate(-50%, 0px)';
+      
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translate(-50%, -10px)';
+      }, 3000);
+    }
+
+    // Setup Custom Interactive Hold Circle Events (Both Mouse + Mobile Touch optimized)
+    function setupHoldCircleListeners() {
+      const target = document.getElementById('holdCircle');
+      
+      const startHold = (e) => {
+        // If tapping interactive elements inside the wheel, do not run e.preventDefault()
+        if (
+          e.target.closest('#amountInput') || 
+          e.target.closest('#categorySelectBtn') || 
+          e.target.closest('#categoryDropdownList') || 
+          e.target.closest('#typeToggleBtn')
+        ) {
+          return; // Let the event pass so the keyboard displays and buttons click correctly!
+        }
+
+        e.preventDefault();
+        
+        // Input validation before holding
+        const amtInput = document.getElementById('amountInput');
+        const amt = parseFloat(amtInput.value);
+
+        if (isNaN(amt) || amt <= 0) {
+          playBeep(150, 0.2);
+          showToast("Please enter a valid numeric amount!", "error");
+          shakeInputEffect();
+          return;
+        }
+
+        if (!currentSelectedCategory) {
+          playBeep(150, 0.2);
+          showToast("Please choose a category dropdown first!", "error");
+          shakeCategoryEffect();
+          return;
+        }
+
+        isHolding = true;
+        holdStartTime = Date.now();
+        document.getElementById('gestureGuide').innerText = "HOLD STEADY...";
+        document.getElementById('gestureGuide').className = "text-[10px] font-black text-rose-500 tracking-wider animate-pulse";
+        
+        animateProgressBar();
+      };
+
+      const endHold = (e) => {
+        if (!isHolding) return;
+        isHolding = false;
+        cancelAnimationFrame(animFrame);
+        
+        // Check if hold duration satisfied
+        const heldDuration = Date.now() - holdStartTime;
+        if (heldDuration >= holdRequiredTime) {
+          submitTransaction();
+        } else {
+          resetProgressBar();
+          document.getElementById('gestureGuide').innerText = "PRESS & HOLD TO LOG";
+          document.getElementById('gestureGuide').className = "text-[10px] font-bold text-stone-500 tracking-wider";
+        }
+      };
+
+      const leaveHold = () => {
+        if (isHolding) endHold();
+      };
+
+      // Event registrations
+      target.addEventListener('mousedown', startHold);
+      target.addEventListener('mouseup', endHold);
+      target.addEventListener('mouseleave', leaveHold);
+
+      target.addEventListener('touchstart', startHold, { passive: false });
+      target.addEventListener('touchend', endHold);
+      target.addEventListener('touchcancel', leaveHold);
+    }
+
+    // Progress Bar Animation Loop
+    let lastTick = 0;
+    function animateProgressBar() {
+      if (!isHolding) return;
+
+      const elapsed = Date.now() - holdStartTime;
+      const progressRatio = Math.min(elapsed / holdRequiredTime, 1);
+      
+      const pathLength = 292.16; 
+      const offset = pathLength - (progressRatio * pathLength);
+      const ring = document.getElementById('holdProgressRing');
+      ring.style.strokeDashoffset = offset;
+
+      const percentage = progressRatio * 100;
+      document.getElementById('dot1').className = `w-1.5 h-1.5 rounded-full ${percentage > 33 ? 'bg-rose-500' : 'bg-stone-300'}`;
+      document.getElementById('dot2').className = `w-1.5 h-1.5 rounded-full ${percentage > 66 ? 'bg-rose-500' : 'bg-stone-300'}`;
+      document.getElementById('dot3').className = `w-1.5 h-1.5 rounded-full ${percentage >= 100 ? 'bg-rose-500 animate-ping' : 'bg-stone-300'}`;
+
+      if (Math.floor(elapsed / 400) > lastTick) {
+        lastTick = Math.floor(elapsed / 400);
+        playHoldTic();
+      }
+
+      if (progressRatio < 1) {
+        animFrame = requestAnimationFrame(animateProgressBar);
+      } else {
+        isHolding = false;
+        submitTransaction();
+      }
+    }
+
+    function resetProgressBar() {
+      const ring = document.getElementById('holdProgressRing');
+      ring.style.strokeDashoffset = 292.16;
+      document.getElementById('dot1').className = "w-1.5 h-1.5 rounded-full bg-stone-300";
+      document.getElementById('dot2').className = "w-1.5 h-1.5 rounded-full bg-stone-300";
+      document.getElementById('dot3').className = "w-1.5 h-1.5 rounded-full bg-stone-300";
+      lastTick = 0;
+    }
+
+    // Submit Log Functionality
+    async function submitTransaction() {
+      const amtInput = document.getElementById('amountInput');
+      const amount = parseFloat(amtInput.value).toFixed(2);
+      const category = currentSelectedCategory;
+      const type = isIncomeType ? 'Income' : 'Spend';
+      
+      const now = new Date();
+      const options = { month: 'short', day: 'numeric' };
+      const formattedDate = now.toLocaleDateString('en-US', options);
+
+      const newTrans = {
+        id: 'tx-' + Date.now() + '-' + Math.floor(Math.random()*1000),
+        period: activePeriod === 'SUMMARY' ? periods[periods.length - 1] : activePeriod,
+        type: type,
+        amount: amount,
+        category: category,
+        date: formattedDate
+      };
+
+      transactions.push(newTrans);
+      saveTransactions();
+
+      resetProgressBar();
+      triggerConfettiBurst();
+      playSuccessSound();
+
+      // Reset Inputs and dismiss virtual mobile keyboard
+      amtInput.value = '';
+      amtInput.blur();
+      currentSelectedCategory = '';
+      document.getElementById('selectedCategoryLabel').innerText = "Select...";
+      document.getElementById('selectedCategoryLabel').className = "truncate text-stone-700";
+      document.getElementById('gestureGuide').innerText = "LOGGED ✅";
+      document.getElementById('gestureGuide').className = "text-[10px] font-black text-emerald-500 tracking-wider";
+
+      updateDashboardData();
+      renderLedgerList();
+
+      setTimeout(() => {
+        document.getElementById('gestureGuide').innerText = "PRESS & HOLD TO LOG";
+        document.getElementById('gestureGuide').className = "text-[10px] font-bold text-stone-500 tracking-wider";
+      }, 1500);
+
+      if (sheetsConfig.isConfigured && sheetsConfig.webAppUrl) {
+        syncToGoogleSheets(newTrans);
+      } else {
+        showToast(`Saved to device ledger!`, "success");
+      }
+    }
+
+    function shakeInputEffect() {
+      const el = document.getElementById('amountInput');
+      el.classList.add('border-red-500', 'animate-bounce');
+      setTimeout(() => el.classList.remove('border-red-500', 'animate-bounce'), 800);
+    }
+
+    function shakeCategoryEffect() {
+      const el = document.getElementById('categorySelectBtn');
+      el.classList.add('border-red-500', 'bg-red-50');
+      setTimeout(() => el.classList.remove('border-red-500', 'bg-red-50'), 800);
+    }
+
+    function triggerConfettiBurst() {
+      const ring = document.getElementById('burstRing');
+      ring.classList.add('burst-active');
+      setTimeout(() => {
+        ring.classList.remove('burst-active');
+      }, 600);
+    }
+
+    // Modal Visibility Controllers
+    function toggleConfigModal(show) {
+      document.getElementById('configModal').classList.toggle('hidden', !show);
+      if (show) loadSheetsConfig();
+    }
+
+    // Help modal visibility toggles
+    function toggleHelpModal(show) {
+      document.getElementById('helpModal').classList.toggle('hidden', !show);
+    }
+
+    function saveSheetsConfig() {
+      const url = document.getElementById('googleSheetsUrlInput').value.trim();
+      if (!url) {
+        sheetsConfig.webAppUrl = '';
+        sheetsConfig.isConfigured = false;
+      } else {
+        sheetsConfig.webAppUrl = url;
+        sheetsConfig.isConfigured = true;
+      }
+      localStorage.setItem(STORAGE_CONFIG_KEY, JSON.stringify(sheetsConfig));
+      updateSheetsIndicator();
+      toggleConfigModal(false);
+      showToast("Configured successfully!", "success");
+    }
+
+    async function testSyncLink() {
+      const url = document.getElementById('googleSheetsUrlInput').value.trim();
+      if (!url) {
+        showToast("Please paste your Web App Link first!", "error");
+        return;
+      }
+
+      showToast("Sending test row packet...", "info");
+
+      const testPayload = {
+        date: "TEST-DATE",
+        period: "TEST-PERIOD",
+        type: "Income",
+        amount: "100.00",
+        category: "Bonus"
+      };
+
+      try {
+        await fetch(url, {
+          method: 'POST',
+          mode: 'no-cors', 
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(testPayload)
+        });
+        showToast("Success! Check your Sheet row.", "success");
+      } catch (err) {
+        console.error("Link Sync Error: ", err);
+        showToast("Failed to connect. Check URL/Deployment", "error");
+      }
+    }
+
+    async function syncToGoogleSheets(txn) {
+      const url = sheetsConfig.webAppUrl;
+      const payload = {
+        date: txn.date,
+        period: txn.period,
+        type: txn.type,
+        amount: String(txn.amount),
+        category: txn.category
+      };
+
+      let attempt = 0;
+      const maxRetries = 5;
+      let delay = 1000;
+
+      while (attempt < maxRetries) {
+        try {
+          await fetch(url, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          showToast(`Synced to Sheet & Device Ledger!`, "success");
+          return; 
+        } catch (err) {
+          attempt++;
+          if (attempt >= maxRetries) {
+            showToast("Sync failed after multiple retries. Stored safely locally.", "error");
+            console.error("Google sheets append failed: ", err);
+          } else {
+            await new Promise(resolve => setTimeout(resolve, delay));
+            delay *= 2; 
+          }
+        }
+      }
+    }
+
+    function copyAppsScriptCode() {
+      const code = document.getElementById('scriptCodeBlock').innerText;
+      const el = document.createElement('textarea');
+      el.value = code;
+      document.body.appendChild(el);
+      el.select();
+      document.execCommand('copy');
+      document.body.removeChild(el);
+      showToast("Script code copied to clipboard!", "success");
+    }
+
+    // CSV Data Exporter Utility
+    function exportCSV() {
+      let csvRows = [];
+      csvRows.push(["ID", "Period", "Type", "Amount ($)", "Category", "Date"]);
+
+      transactions.forEach(t => {
+        csvRows.push([
+          t.id,
+          t.period,
+          t.type,
+          t.amount,
+          t.category,
+          t.date
+        ]);
+      });
+
+      const csvContent = "data:text/csv;charset=utf-8," 
+        + csvRows.map(e => e.map(val => `"${String(val).replace(/"/g, '""')}"`).join(",")).join("\n");
+      
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement("a");
+      link.setAttribute("href", encodedUri);
+      link.setAttribute("download", `VibuQuickBudget_Export_${activePeriod.replace(/[^A-Za-z0-9]/g, '')}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      showToast("CSV Exported successfully!", "success");
+    }
+  </script>
+
+</body>
+</html>
